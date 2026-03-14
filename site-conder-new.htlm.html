@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Ultimate AI Dev Studio</title>
+<style>
+body {
+    margin:0;
+    font-family: monospace;
+    display: flex;
+    height: 100vh;
+    background:#0f172a;
+    color:white;
+}
+.sidebar {
+    width:260px;
+    background:#020617;
+    padding:15px;
+    display:flex;
+    flex-direction:column;
+    overflow-y:auto;
+}
+.sidebar h2 { margin:0 0 10px 0; }
+.sidebar input {
+    width:100%;
+    padding:6px;
+    margin-bottom:10px;
+    border-radius:5px;
+    border:none;
+}
+.file {
+    padding:6px;
+    cursor:pointer;
+    border-radius:5px;
+    user-select:none;
+}
+.file:hover, .file.active { background:#1e293b; }
+.sidebar button {
+    margin-top:5px;
+    padding:6px;
+    border:none;
+    border-radius:5px;
+    background:#3b82f6;
+    color:white;
+    cursor:pointer;
+}
+.sidebar button:hover { background:#2563eb; }
+.main {
+    flex:1;
+    display:flex;
+    flex-direction:column;
+}
+.toolbar {
+    background:#020617;
+    padding:10px;
+    display:flex;
+    gap:10px;
+    flex-wrap:wrap;
+}
+.toolbar button {
+    padding:6px 10px;
+    border:none;
+    border-radius:5px;
+    background:#3b82f6;
+    color:white;
+    cursor:pointer;
+}
+.toolbar button:hover { background:#2563eb; }
+.editor-preview {
+    flex:1;
+    display:flex;
+    overflow:hidden;
+}
+textarea {
+    flex:1;
+    background:#0f172a;
+    color:#00ff9c;
+    border:none;
+    padding:15px;
+    font-size:14px;
+    resize:none;
+    outline:none;
+}
+iframe {
+    flex:1;
+    border:none;
+    background:white;
+}
+.terminal {
+    height:150px;
+    background:black;
+    color:#00ff00;
+    overflow:auto;
+    padding:10px;
+    font-size:13px;
+}
+.aiBox {
+    position:fixed;
+    bottom:20px;
+    right:20px;
+    background:#1e293b;
+    padding:15px;
+    border-radius:10px;
+    width:260px;
+}
+.aiBox textarea {
+    width:100%;
+    height:60px;
+    background:#020617;
+    color:white;
+    border:none;
+    resize:none;
+    padding:5px;
+}
+.aiBox button {
+    margin-top:5px;
+    width:100%;
+    padding:6px;
+    border:none;
+    border-radius:5px;
+    background:#3b82f6;
+    color:white;
+    cursor:pointer;
+}
+.aiBox button:hover { background:#2563eb; }
+</style>
+</head>
+<body>
+
+<div class="sidebar">
+<h2>📁 Fichiers</h2>
+<input id="search" placeholder="Rechercher...">
+<div id="fileList"></div>
+<button onclick="newFile()">➕ Nouveau</button>
+<button onclick="deleteFile()">🗑 Supprimer</button>
+<button onclick="renameFile()">✏️ Renommer</button>
+<button onclick="duplicateFile()">📄 Dupliquer</button>
+</div>
+
+<div class="main">
+<div class="toolbar">
+<button onclick="save()">💾 Sauvegarder</button>
+<button onclick="exportFile()">📤 Exporter</button>
+<button onclick="runJS()">▶ Exécuter JS</button>
+<button onclick="previewHTML()">🌐 Prévisualiser</button>
+</div>
+<div class="editor-preview">
+<textarea id="code" placeholder="Sélectionnez ou créez un fichier..."></textarea>
+<iframe id="preview"></iframe>
+</div>
+<div id="terminal" class="terminal"></div>
+</div>
+
+<div class="aiBox">
+<b>🤖 AI Assistant</b>
+<textarea id="aiPrompt" placeholder="ex: créer un bouton HTML"></textarea>
+<button onclick="generateAI()">Générer</button>
+</div>
+
+<script>
+let files = JSON.parse(localStorage.getItem("files")) || [];
+let current = null;
+
+// Sauvegarde locale
+function saveDB() { localStorage.setItem("files", JSON.stringify(files)); }
+
+// Affiche la liste des fichiers
+function render() {
+    const search = document.getElementById("search").value.toLowerCase();
+    let html = "";
+    files.forEach((f,i) => {
+        if(search && !f.name.toLowerCase().includes(search)) return;
+        html += `<div class="file ${current===i?'active':''}" draggable="true" ondragstart="drag(event,${i})" onclick="openFile(${i})">${f.name}</div>`;
+    });
+    document.getElementById("fileList").innerHTML = html;
+}
+
+// Drag & Drop
+let dragSrc = null;
+function drag(e,i){ dragSrc=i; }
+document.getElementById("fileList").addEventListener("dragover", e=>e.preventDefault());
+document.getElementById("fileList").addEventListener("drop", e=>{
+    if(dragSrc===null) return;
+    let dropTarget = [...document.querySelectorAll('.file')].indexOf(e.target);
+    if(dropTarget===-1) dropTarget=files.length-1;
+    let temp = files[dragSrc];
+    files.splice(dragSrc,1);
+    files.splice(dropTarget,0,temp);
+    dragSrc=null;
+    saveDB(); render();
+});
+
+// Filtres
+document.getElementById("search").addEventListener("input", render);
+
+// Fichiers
+function newFile(){
+    const name=prompt("Nom du fichier :");
+    if(!name) return;
+    files.push({name,code:""});
+    current = files.length-1;
+    saveDB(); render(); openFile(current);
+}
+function openFile(i){ current=i; document.getElementById("code").value = files[i].code; render(); }
+function save(){ if(current===null){ alert("Sélectionnez un fichier !"); return; } files[current].code=document.getElementById("code").value; saveDB(); terminalLog("💾 Fichier sauvegardé !"); }
+function deleteFile(){ if(current===null){ alert("Sélectionnez un fichier !"); return; } if(confirm(`Supprimer "${files[current].name}" ?`)){ files.splice(current,1); current=null; document.getElementById("code").value=""; saveDB(); render(); } }
+function renameFile(){ if(current===null){ alert("Sélectionnez un fichier !"); return; } const name=prompt("Nouveau nom :", files[current].name); if(!name) return; files[current].name=name; saveDB(); render(); }
+function duplicateFile(){ if(current===null){ alert("Sélectionnez un fichier !"); return; } files.push({name:files[current].name+" (copie)", code:files[current].code}); saveDB(); render(); }
+
+// Export
+function exportFile(){ if(current===null){ alert("Sélectionnez un fichier !"); return; } const blob=new Blob([files[current].code],{type:"text/plain"}); const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=files[current].name+".txt"; a.click(); }
+
+// Preview
+function previewHTML(){ if(current===null) return; document.getElementById("preview").srcdoc = files[current].code; }
+
+// Terminal
+function terminalLog(msg){ const t=document.getElementById("terminal"); t.innerHTML+="<div>"+msg+"</div>"; t.scrollTop=t.scrollHeight; }
+function runJS(){
+    if(current===null){ alert("Sélectionnez un fichier !"); return; }
+    const code=document.getElementById("code").value;
+    try{
+        let result = eval(code);
+        terminalLog("> "+result);
+    }catch(e){
+        terminalLog("<span style='color:red'>"+e+"</span>");
+    }
+}
+
+// AI Assistant (simple simulation)
+function generateAI(){
+    if(current===null){ alert("Sélectionnez un fichier !"); return; }
+    const prompt=document.getElementById("aiPrompt").value.toLowerCase();
+    let generated="";
+    if(prompt.includes("button")) generated=`<button>Click me</button>`;
+    else if(prompt.includes("form")) generated=`<form><input placeholder="Nom"><button>Envoyer</button></form>`;
+    else if(prompt.includes("api")) generated=`fetch("https://api.example.com").then(r=>r.json()).then(data=>console.log(data))`;
+    else if(prompt.includes("html")) generated=`<h1>Hello World</h1>`;
+    else generated=`console.log("Hello world")`;
+    document.getElementById("code").value += "\n\n"+generated;
+    terminalLog("🤖 AI a généré du code !");
+}
+
+render();
+</script>
+
+</body>
+</html>
